@@ -7,10 +7,10 @@ Current SBOM generation tools like syft scan an entire artifact (container image
 - Components inherited from parent artifacts
 
 This creates several issues:
-1. **Duplication**: The same components appear in multiple SBOMs across the inheritance chain
-2. **Lost provenance**: No way to tell which layer introduced which component
-3. **Storage bloat**: Especially problematic for deep hierarchies (AI models can have 5+ levels)
-4. **False positives**: Inherited content triggers redundant vulnerability alerts
+1. **Lost provenance**: No way to tell which layer introduced which component
+2. **Mixed concerns**: Components from different sources appear as if they're all equivalent
+3. **Unclear relationships**: Deep hierarchies (AI models can have 7+ levels) become impossible to understand
+4. **No context**: Cannot distinguish between direct dependencies and inherited content
 
 ### Why Not Defer to Downstream Stitching?
 
@@ -54,8 +54,8 @@ graph TD
 
 **Issues**:
 - No distinction between `my-binary` (added in Y) and RPMs (from X)
-- If X's SBOM exists separately, components are duplicated
-- Consumers can't tell provenance of each component
+- Components appear without provenance information
+- Cannot determine which layer introduced which component
 
 #### Solution: Contextual SBOM
 
@@ -75,11 +75,9 @@ graph TD
 ```
 
 **Benefits**:
-| Metric | Flat SBOM | Contextual SBOM |
-|--------|-----------|-----------------|
-| Components in Y's SBOM | 6 | 1 (+ reference to X) |
-| Provenance clarity | None | Clear (Y adds my-binary) |
-| Storage if both distributed | ~2x duplication | No duplication |
+- Clear provenance: Y adds `my-binary`, all RPMs come from X
+- Component relationships are explicit via `DESCENDANT_OF` and `CONTAINS`
+- Consumers can trace each component to its source layer
 
 ---
 
@@ -98,8 +96,8 @@ graph TD
 
 **Issues**:
 - Builder tools (golang-compiler, build-tools) listed as if they're shipped
-- Can't distinguish build-time from runtime dependencies
-- Misleading for security scanning (build tools aren't in final image)
+- No distinction between build-time and runtime dependencies
+- Cannot determine what was actually shipped vs what was used to build
 
 #### Solution: Contextual SBOM
 
@@ -132,11 +130,9 @@ graph TD
 **Key difference**: `BUILD_TOOL_OF` relationship means builder content is **not copied forward** into Z's shipped SBOM—it's documented but marked as build-time only.
 
 **Benefits**:
-| Metric | Flat SBOM | Contextual SBOM |
-|--------|-----------|-----------------|
-| Components in Z's SBOM | 7 | 1 (+ references) |
-| Build vs runtime clarity | None | Explicit via relationships |
-| False vulnerability alerts | High (build tools included) | Low (build tools excluded) |
+- Clear separation: build-time dependencies (builder) vs runtime dependencies (Y, X)
+- Accurate representation of what's actually shipped
+- Explicit relationships show the complete build context without conflating build and runtime concerns
 
 ---
 
@@ -154,11 +150,10 @@ graph TD
 ```
 
 **Issues at scale**:
-- **Exponential duplication**: Each level re-lists all inherited components
-- **Storage explosion**: 7 levels × 16 components = massive redundancy
-- **Provenance lost**: Can't tell that dataset-source-A came from level 6, not level 0
-- **Intractable scanning**: Same datasets trigger alerts at every level
-- **Mixed concerns**: Container components mixed with model components
+- **Lost provenance**: Can't tell that dataset-source-A came from level 6, not level 0
+- **Unclear hierarchy**: No way to understand the 7-level inheritance chain
+- **Mixed concerns**: Container components mixed with model components without distinction
+- **Flat structure**: Deep relationships are completely hidden
 
 #### Solution: Contextual SBOM
 
@@ -209,28 +204,14 @@ graph TD
 ```
 
 **Benefits at depth**:
-| Metric | Flat SBOM | Contextual SBOM |
-|--------|-----------|-----------------|
-| Components in Modelcar's SBOM | 16 | 1 (+ reference chain) |
-| Total components stored across chain | 112 (16 × 7 levels) | 16 (each stored once) |
-| Storage savings | 0% | **86%** |
-| Provenance traceability | None | Full (7 levels: container + 6 model levels) |
-| Levels of depth | Hidden | Explicit (7 levels) |
-| Separation of concerns | None | Clear (container vs model hierarchy) |
+- **Full provenance traceability**: Each component clearly traced to its origin across 7 levels
+- **Explicit hierarchy**: Container lineage (Modelcar → Base Image) and model lineage (Model → 6 levels) are both clearly represented
+- **Separation of concerns**: Container components vs model components are distinguished
+- **Dual inheritance**: Demonstrates both container inheritance patterns and deep AI model inheritance chains in a single structure
 
-**Key insight**: As hierarchy depth increases (common in AI/ML), the benefits of contextual SBOMs grow exponentially. A 7-level hierarchy creates 86% storage savings and preserves complete provenance that would otherwise be lost. The modelcar demonstrates **dual inheritance**: container lineage (base image) and model lineage (fine-tuning chain).
+**Key insight**: As hierarchy depth increases (common in AI/ML), contextual SBOMs become essential for maintaining clarity. The modelcar demonstrates **dual inheritance**: container lineage (base image) and model lineage (fine-tuning chain), both preserved with complete provenance.
 
 ---
-
-## Benefits Summary
-
-| Benefit | Container Images | AI Models |
-|---------|-----------------|-----------|
-| **Deduplication** | Moderate (2-3 levels) | Critical (5-6+ levels) |
-| **Storage savings** | 30-50% | 70-90% |
-| **Provenance clarity** | Important | Essential (complex supply chain) |
-| **Support surface reduction** | Nice-to-have | Business critical (avoid distributing proprietary bases) |
-| **Vulnerability management** | Fewer false positives | Dramatically fewer false positives |
 
 ## References
 
