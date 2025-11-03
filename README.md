@@ -142,58 +142,83 @@ graph TD
 
 ### Example 3: Deep AI Model Hierarchy
 
-A modelcar (OCI-formatted AI model) built from a fine-tuned model, which builds on a foundation model, which was trained on datasets. This demonstrates the **depth problem** where AI artifacts commonly have 5+ levels of inheritance.
+A modelcar is a container image (OCI format) that packages an AI model for deployment. The modelcar inherits from a container base image and contains the model artifact. The model itself has a deep inheritance chain through fine-tuning and foundation models. This demonstrates the **depth problem** where AI artifacts commonly have 7+ levels of inheritance.
 
 #### Problem: Flat SBOM
 
 ```mermaid
 graph TD
-    Modelcar["Modelcar SBOM<br/>━━━━━━━━━━━━━━━━━━━━<br/>📦 deployment-config<br/>📦 fine-tune-data-v2<br/>📦 fine-tune-code-v2<br/>📦 fine-tune-data-v1<br/>📦 fine-tune-code-v1<br/>📦 foundation-weights<br/>📦 foundation-architecture<br/>📦 pretrain-dataset-1<br/>📦 pretrain-dataset-2<br/>📦 pretrain-dataset-3<br/>📦 dataset-source-A<br/>📦 dataset-source-B<br/>📦 dataset-source-C<br/>📦 dataset-source-D<br/><br/>Total: 14 components"]
+    Modelcar["Modelcar SBOM<br/>━━━━━━━━━━━━━━━━━━━━<br/>📦 container-runtime-deps<br/>📦 deployment-config<br/>📦 model-wrapper<br/>📦 fine-tune-data-v2<br/>📦 fine-tune-code-v2<br/>📦 fine-tune-data-v1<br/>📦 fine-tune-code-v1<br/>📦 foundation-weights<br/>📦 foundation-architecture<br/>📦 pretrain-dataset-1<br/>📦 pretrain-dataset-2<br/>📦 pretrain-dataset-3<br/>📦 dataset-source-A<br/>📦 dataset-source-B<br/>📦 dataset-source-C<br/>📦 dataset-source-D<br/><br/>Total: 16 components"]
 
     style Modelcar fill:#ffcccc
 ```
 
 **Issues at scale**:
 - **Exponential duplication**: Each level re-lists all inherited components
-- **Storage explosion**: 6 levels × 14 components = massive redundancy
-- **Provenance lost**: Can't tell that dataset-source-A came from level 5, not level 1
+- **Storage explosion**: 7 levels × 16 components = massive redundancy
+- **Provenance lost**: Can't tell that dataset-source-A came from level 6, not level 0
 - **Intractable scanning**: Same datasets trigger alerts at every level
+- **Mixed concerns**: Container components mixed with model components
 
 #### Solution: Contextual SBOM
 
 ```mermaid
 graph TD
-    Modelcar["Modelcar SBOM<br/>━━━━━━━━━━━━━━━━<br/>📦 deployment-config"]
+    Modelcar["Modelcar SBOM<br/>(Container Image)<br/>━━━━━━━━━━━━━━━━<br/>📦 deployment-config"]
+    BaseImage["Base Container SBOM<br/>━━━━━━━━━━━━━━━━━━━━<br/>📦 container-runtime-deps"]
+    Model["Model Artifact SBOM<br/>━━━━━━━━━━━━━━━━━━<br/>📦 model-wrapper"]
     FT2["Fine-tuned v2 SBOM<br/>━━━━━━━━━━━━━━━━━━<br/>📦 fine-tune-data-v2<br/>📦 fine-tune-code-v2"]
     FT1["Fine-tuned v1 SBOM<br/>━━━━━━━━━━━━━━━━━━<br/>📦 fine-tune-data-v1<br/>📦 fine-tune-code-v1"]
     Foundation["Foundation Model SBOM<br/>━━━━━━━━━━━━━━━━━━━━━━<br/>📦 foundation-weights<br/>📦 foundation-architecture"]
     Pretrain["Pretraining Datasets SBOM<br/>━━━━━━━━━━━━━━━━━━━━━━━━<br/>📦 pretrain-dataset-1<br/>📦 pretrain-dataset-2<br/>📦 pretrain-dataset-3"]
     Sources["Dataset Sources SBOM<br/>━━━━━━━━━━━━━━━━━━━━━<br/>📦 dataset-source-A<br/>📦 dataset-source-B<br/>📦 dataset-source-C<br/>📦 dataset-source-D"]
 
-    Modelcar -->|DESCENDANT_OF| FT2
+    Modelcar -->|DESCENDANT_OF| BaseImage
+    Modelcar -->|CONTAINS| Model
+    Model -->|DESCENDANT_OF| FT2
     FT2 -->|DESCENDANT_OF| FT1
     FT1 -->|DESCENDANT_OF| Foundation
     Foundation -->|DESCENDANT_OF| Pretrain
     Pretrain -->|DESCENDANT_OF| Sources
 
+    Modelcar -->|CONTAINS| deployconfig["deployment-config"]
+    BaseImage -->|CONTAINS| runtime["container-runtime-deps"]
+    Model -->|CONTAINS| wrapper["model-wrapper"]
+    FT2 -->|CONTAINS| ft2data["fine-tune-data-v2<br/>fine-tune-code-v2"]
+    FT1 -->|CONTAINS| ft1data["fine-tune-data-v1<br/>fine-tune-code-v1"]
+    Foundation -->|CONTAINS| foundweights["foundation-weights<br/>foundation-architecture"]
+    Pretrain -->|CONTAINS| pretraindata["pretrain-dataset-1<br/>pretrain-dataset-2<br/>pretrain-dataset-3"]
+    Sources -->|CONTAINS| sourcedata["dataset-source-A<br/>dataset-source-B<br/>dataset-source-C<br/>dataset-source-D"]
+
     style Modelcar fill:#ccffcc
+    style BaseImage fill:#ccffcc
+    style Model fill:#ccffcc
     style FT2 fill:#ccffcc
     style FT1 fill:#ccffcc
     style Foundation fill:#ccffcc
     style Pretrain fill:#ccffcc
     style Sources fill:#ccffcc
+    style deployconfig fill:#e6f3ff
+    style runtime fill:#e6f3ff
+    style wrapper fill:#e6f3ff
+    style ft2data fill:#e6f3ff
+    style ft1data fill:#e6f3ff
+    style foundweights fill:#e6f3ff
+    style pretraindata fill:#e6f3ff
+    style sourcedata fill:#e6f3ff
 ```
 
 **Benefits at depth**:
 | Metric | Flat SBOM | Contextual SBOM |
 |--------|-----------|-----------------|
-| Components in Modelcar's SBOM | 14 | 1 (+ reference chain) |
-| Total components stored across chain | 84 (14 × 6 levels) | 14 (each stored once) |
-| Storage savings | 0% | **83%** |
-| Provenance traceability | None | Full (6 levels deep) |
-| Levels of depth | Hidden | Explicit (6 levels) |
+| Components in Modelcar's SBOM | 16 | 1 (+ reference chain) |
+| Total components stored across chain | 112 (16 × 7 levels) | 16 (each stored once) |
+| Storage savings | 0% | **86%** |
+| Provenance traceability | None | Full (7 levels: container + 6 model levels) |
+| Levels of depth | Hidden | Explicit (7 levels) |
+| Separation of concerns | None | Clear (container vs model hierarchy) |
 
-**Key insight**: As hierarchy depth increases (common in AI/ML), the benefits of contextual SBOMs grow exponentially. A 6-level hierarchy creates 83% storage savings and preserves complete provenance that would otherwise be lost.
+**Key insight**: As hierarchy depth increases (common in AI/ML), the benefits of contextual SBOMs grow exponentially. A 7-level hierarchy creates 86% storage savings and preserves complete provenance that would otherwise be lost. The modelcar demonstrates **dual inheritance**: container lineage (base image) and model lineage (fine-tuning chain).
 
 ---
 
